@@ -17,6 +17,7 @@
             buildInputs = [
               pkgs.go
               pkgs.just
+              pkgs.tilt
             ];
           };
         };

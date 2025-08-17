@@ -1,7 +1,16 @@
 package main
 
-import "log/slog"
+import (
+	"github.com/BSFishy/lumos/router"
+)
 
 func main() {
-	slog.Info("hello world")
+	SetupLogger()
+
+	client := SetupMqtt()
+	setupGroups(client)
+
+	r := router.NewRouter()
+
+	r.ListenAndServe(":8080")
 }
