@@ -7,16 +7,8 @@ import (
 )
 
 var config = Config{
-	a: HSB{
-		H: 279,
-		S: 0.9,
-		B: 1,
-	},
-	b: HSB{
-		H: 89,
-		S: 0.2,
-		B: 1,
-	},
+	a: OklabFromSRGB(0.2, 0.5, 0.8),
+	b: OklabFromSRGB(0.8, 0.7, 0.3),
 
 	speedMin: 5 * time.Second,
 	speedMax: 10 * time.Second,
@@ -24,30 +16,30 @@ var config = Config{
 }
 
 type Config struct {
-	a, b     HSB
+	a, b     Oklab
 	speedMin time.Duration
 	speedMax time.Duration
 	timestep time.Duration
 }
 
-func ColorPayload(color HSB, transition float64) []byte {
+func ColorPayload(color Oklab, transition float64) []byte {
 	type Color struct {
-		Hue        int `json:"hue"`
-		Saturation int `json:"saturation"`
+		X float64 `json:"x"`
+		Y float64 `json:"y"`
 	}
 
 	type Payload struct {
 		Color      Color   `json:"color"`
-		Brightness int     `json:"brightness"`
 		Transition float64 `json:"transition,omitempty"`
 	}
 
+	x, y := color.ToXY()
+
 	payload := Payload{
 		Color: Color{
-			Hue:        int(color.H),
-			Saturation: int(100 * color.S),
+			X: x,
+			Y: y,
 		},
-		Brightness: int(256 * color.B),
 	}
 
 	if transition > 0 {

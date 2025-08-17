@@ -26,7 +26,7 @@ type ColorManager struct {
 
 	friendlyName string
 
-	previousColor, nextColor HSB
+	previousColor, nextColor Oklab
 	start, end               time.Time
 }
 
@@ -76,7 +76,7 @@ func (c *ColorManager) updateColor(topic string, durationSeconds float64) {
 	publish(c.client, topic, 1, false, ColorPayload(colorStep, transition.Seconds()))
 }
 
-func chooseColor() HSB {
+func chooseColor() Oklab {
 	choice := rand.IntN(2)
 	switch choice {
 	case 0:

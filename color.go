@@ -2,106 +2,175 @@ package main
 
 import "math"
 
-// HSB is Hue/Saturation/Brightness (a.k.a HSV).
-// Hue is degrees [0..360), Saturation and Brightness are [0..1].
-type HSB struct {
-	H, S, B float64
-}
+type Oklab struct{ L, A, B float64 } // L in [0..1], A/B roughly [-0.5..0.5]
 
-// Lerp linearly interpolates between two HSB values.
-// Hue wraps correctly around 360.
-func (c HSB) Lerp(to HSB, t float64) HSB {
-	// shortest hue delta
-	dh := math.Mod(to.H-c.H+540, 360) - 180
-	h := wrap360(c.H + dh*t)
-	s := c.S + (to.S-c.S)*t
-	b := c.B + (to.B-c.B)*t
-	return HSB{H: h, S: s, B: b}
-}
-
-// ToSRGB converts HSB -> sRGB [0..1].
-func (c HSB) ToSRGB() (r, g, b float64) {
-	h := wrap360(c.H) / 60
-	i := math.Floor(h)
-	f := h - i
-	p := c.B * (1 - c.S)
-	q := c.B * (1 - c.S*f)
-	t := c.B * (1 - c.S*(1-f))
-
-	switch int(i) % 6 {
-	case 0:
-		return c.B, t, p
-	case 1:
-		return q, c.B, p
-	case 2:
-		return p, c.B, t
-	case 3:
-		return p, q, c.B
-	case 4:
-		return t, p, c.B
-	default:
-		return c.B, p, q
+// ---------- Blending ----------
+func (c Oklab) Lerp(to Oklab, t float64) Oklab {
+	return Oklab{
+		L: c.L + (to.L-c.L)*t,
+		A: c.A + (to.A-c.A)*t,
+		B: c.B + (to.B-c.B)*t,
 	}
 }
 
-// FromSRGB makes an HSB from sRGB [0..1].
-func HSBFromSRGB(r, g, b float64) HSB {
-	max := math.Max(r, math.Max(g, b))
-	min := math.Min(r, math.Min(g, b))
-	d := max - min
-
-	var h float64
-	if d == 0 {
-		h = 0
-	} else {
-		switch max {
-		case r:
-			h = math.Mod((g-b)/d, 6)
-		case g:
-			h = (b-r)/d + 2
-		case b:
-			h = (r-g)/d + 4
-		}
-		h *= 60
-		if h < 0 {
-			h += 360
-		}
-	}
-	var s float64
-	if max == 0 {
-		s = 0
-	} else {
-		s = d / max
-	}
-	return HSB{H: h, S: s, B: max}
+// Euclidean distance in Oklab (good for ΔE gating)
+func (c Oklab) DeltaE(o Oklab) float64 {
+	dL, dA, dB := c.L-o.L, c.A-o.A, c.B-o.B
+	return math.Hypot(dL, math.Hypot(dA, dB))
 }
 
-// Distance is a perceptual-ish Euclidean distance in HSB space.
-// Hue wraps around, so 359° and 1° are close.
-func (c HSB) Distance(o HSB) float64 {
-	dh := math.Mod(o.H-c.H+540, 360) - 180
-	ds := o.S - c.S
-	db := o.B - c.B
-	return math.Sqrt(dh*dh/360.0/360.0 + ds*ds + db*db)
+// Generate N waypoints along the Oklab line (inclusive of endpoints).
+// Use these as keyframes; send each with a per-step `transition`.
+func OklabWaypoints(from, to Oklab, steps int) []Oklab {
+	if steps < 2 {
+		steps = 2
+	}
+	out := make([]Oklab, steps)
+	for i := 0; i < steps; i++ {
+		t := float64(i) / float64(steps-1)
+		out[i] = from.Lerp(to, t)
+	}
+	return out
+}
+
+// ---------- sRGB <-> Oklab ----------
+func OklabFromSRGB(r, g, b float64) Oklab {
+	rl, gl, bl := srgbToLinear(r), srgbToLinear(g), srgbToLinear(b)
+
+	// linear RGB -> LMS
+	l := 0.4122214708*rl + 0.5363325363*gl + 0.0514459929*bl
+	m := 0.2119034982*rl + 0.6806995451*gl + 0.1073969566*bl
+	s := 0.0883024619*rl + 0.2817188376*gl + 0.6299787005*bl
+
+	l_ := cbrt(l)
+	m_ := cbrt(m)
+	s_ := cbrt(s)
+
+	return Oklab{
+		L: 0.2104542553*l_ + 0.7936177850*m_ - 0.0040720468*s_,
+		A: 1.9779984951*l_ - 2.4285922050*m_ + 0.4505937099*s_,
+		B: 0.0259040371*l_ + 0.7827717662*m_ - 0.8086757660*s_,
+	}
+}
+
+func (c Oklab) ToSRGB() (r, g, b float64) {
+	// Oklab -> LMS'
+	l_ := c.L + 0.3963377774*c.A + 0.2158037573*c.B
+	m_ := c.L - 0.1055613458*c.A - 0.0638541728*c.B
+	s_ := c.L - 0.0894841775*c.A - 1.2914855480*c.B
+
+	l := l_ * l_ * l_
+	m := m_ * m_ * m_
+	s := s_ * s_ * s_
+
+	// LMS -> linear RGB
+	rl := +4.0767416621*l - 3.3077115913*m + 0.2309699292*s
+	gl := -1.2684380046*l + 2.6097574011*m - 0.3413193965*s
+	bl := -0.0041960863*l - 0.7034186147*m + 1.7076147010*s
+
+	// linear -> sRGB with clamp
+	r = clamp01(linearToSrgb(rl))
+	g = clamp01(linearToSrgb(gl))
+	b = clamp01(linearToSrgb(bl))
+	return
+}
+
+// ---------- Helpers (HSV + xy if you need them) ----------
+
+// ToHSB/HSV via sRGB (h in [0,360), s,v in [0,1])
+func (c Oklab) ToHSV() (h, s, v float64) {
+	r, g, b := c.ToSRGB()
+	return rgbToHSV(r, g, b)
+}
+
+// CIE 1931 xy (sRGB/D65). If all zero, returns 0,0.
+func (c Oklab) ToXY() (x, y float64) {
+	r, g, b := c.ToSRGB()
+	rl, gl, bl := srgbToLinear(r), srgbToLinear(g), srgbToLinear(b)
+	X := 0.4124564*rl + 0.3575761*gl + 0.1804375*bl
+	Y := 0.2126729*rl + 0.7151522*gl + 0.0721750*bl
+	Z := 0.0193339*rl + 0.1191920*gl + 0.9503041*bl
+	sum := X + Y + Z
+	if sum == 0 {
+		return 0, 0
+	}
+	return X / sum, Y / sum
+}
+
+// ---------- Private utilities ----------
+func srgbToLinear(c float64) float64 {
+	if c <= 0.04045 {
+		return c / 12.92
+	}
+	return math.Pow((c+0.055)/1.055, 2.4)
+}
+
+func linearToSrgb(c float64) float64 {
+	if c <= 0.0031308 {
+		return 12.92 * c
+	}
+	return 1.055*math.Pow(c, 1.0/2.4) - 0.055
+}
+
+func cbrt(x float64) float64 {
+	if x > 0 {
+		return math.Pow(x, 1.0/3.0)
+	}
+	if x < 0 {
+		return -math.Pow(-x, 1.0/3.0)
+	}
+	return 0
 }
 
 func clamp01(x float64) float64 {
 	if x < 0 {
 		return 0
 	}
-
 	if x > 1 {
 		return 1
 	}
-
 	return x
 }
 
-func wrap360(h float64) float64 {
-	h = math.Mod(h, 360.0)
-	if h < 0 {
-		h += 360.0
+// Minimal RGB->HSV (for ToHSV)
+func rgbToHSV(r, g, b float64) (h, s, v float64) {
+	max := r
+	if g > max {
+		max = g
 	}
-
-	return h
+	if b > max {
+		max = b
+	}
+	min := r
+	if g < min {
+		min = g
+	}
+	if b < min {
+		min = b
+	}
+	v = max
+	d := max - min
+	if max == 0 {
+		return 0, 0, 0
+	}
+	s = d / max
+	if d == 0 {
+		return 0, s, v
+	}
+	switch max {
+	case r:
+		h = (g - b) / d
+		if g < b {
+			h += 6
+		}
+	case g:
+		h = (b-r)/d + 2
+	default:
+		h = (r-g)/d + 4
+	}
+	h *= 60
+	if h >= 360 {
+		h -= 360
+	}
+	return
 }
