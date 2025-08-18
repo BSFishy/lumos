@@ -9,6 +9,7 @@ import (
 	"github.com/BSFishy/lumos/util"
 )
 
+// TODO: read config from file
 var config = Config{
 	Groups: map[string]GroupConfig{
 		"lumos_primary": {

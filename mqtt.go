@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"time"
@@ -9,20 +11,40 @@ import (
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 )
 
-func SetupMqtt() mqtt.Client {
+func randSuffix() string {
+	b := make([]byte, 4)
+	_, _ = rand.Read(b)
+	return hex.EncodeToString(b)
+}
+
+func SetupMqtt() {
 	broker, ok := os.LookupEnv("MQTT_BROKER")
 	util.Assert(ok, "please specify an mqtt broker")
 
-	opts := mqtt.NewClientOptions().AddBroker(broker).SetClientID("lumos")
-	opts.SetKeepAlive(2 * time.Second)
-	opts.SetPingTimeout(1 * time.Second)
+	opts := mqtt.NewClientOptions()
+	opts.AddBroker(broker)
+
+	// Unique client ID, every run
+	opts.SetClientID("lumos-" + randSuffix())
+
+	// Robust connection behavior
+	opts.SetAutoReconnect(true)
+	opts.SetConnectRetry(true)
+	opts.SetConnectRetryInterval(2 * time.Second)
+	opts.SetCleanSession(true) // we're resubscribing on connect
+
+	// Reasonable keepalive
+	opts.SetKeepAlive(30 * time.Second)
+	opts.SetPingTimeout(10 * time.Second)
+	opts.SetWriteTimeout(10 * time.Second)
+
+	// (re)subscribe every time we reconnect
+	opts.OnConnect = setupGroups
 
 	c := mqtt.NewClient(opts)
 	if token := c.Connect(); token.Wait() && token.Error() != nil {
 		panic(token.Error())
 	}
-
-	return c
 }
 
 func subscribe(c mqtt.Client, topic string, qos byte, callback mqtt.MessageHandler) {

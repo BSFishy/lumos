@@ -6,9 +6,7 @@ import (
 
 func main() {
 	SetupLogger()
-
-	client := SetupMqtt()
-	setupGroups(client)
+	SetupMqtt()
 
 	r := router.NewRouter()
 
