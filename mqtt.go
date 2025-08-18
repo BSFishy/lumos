@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"log/slog"
 	"os"
 	"time"
 
@@ -40,6 +39,4 @@ func publish(c mqtt.Client, topic string, qos byte, retained bool, payload any) 
 	if token.Wait() && token.Error() != nil {
 		panic(fmt.Errorf("failed to publish to %s: %w", topic, token.Error()))
 	}
-
-	slog.Debug("publish", "topic", topic, "payload", string(payload.([]byte)))
 }

@@ -3,23 +3,72 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"math/rand/v2"
 	"time"
+
+	"github.com/BSFishy/lumos/util"
 )
 
 var config = Config{
-	a: OklabFromSRGB(0.2, 0.5, 0.8),
-	b: OklabFromSRGB(0.8, 0.7, 0.3),
+	Groups: map[string]GroupConfig{
+		"lumos_primary": {
+			Ambient: []Oklab{
+				OklabFromSRGB(0.2, 0.5, 0.8),
+				OklabFromSRGB(0.8, 0.7, 0.3),
+			},
+			Transition: Transition{
+				Minimum: "5s",
+				Maximum: "10s",
+			},
+			Hold: Transition{
+				Minimum: "0s",
+				Maximum: "5s",
+			},
+		},
+	},
+	Timestep: "1s",
+}
 
-	speedMin: 5 * time.Second,
-	speedMax: 10 * time.Second,
-	timestep: 1000 * time.Millisecond,
+type Transition struct {
+	Minimum string `json:"min"`
+	Maximum string `json:"max"`
+}
+
+func (t *Transition) Min() time.Duration {
+	return util.Must(time.ParseDuration(t.Minimum))
+}
+
+func (t *Transition) Max() time.Duration {
+	return util.Must(time.ParseDuration(t.Maximum))
+}
+
+func (t *Transition) Select() time.Duration {
+	seconds := t.Min().Seconds() + rand.Float64()*(t.Max().Seconds()-t.Min().Seconds())
+	return time.Duration(seconds * float64(time.Second))
+}
+
+type GroupConfig struct {
+	Priority   uint       `json:"priority"`
+	Ambient    []Oklab    `json:"ambient"`
+	Transition Transition `json:"transition"`
+	Hold       Transition `json:"hold"`
+}
+
+func (g *GroupConfig) SelectColor() Oklab {
+	color := g.Ambient[rand.IntN(len(g.Ambient))]
+
+	// TODO: overlay time color and season color
+
+	return color
 }
 
 type Config struct {
-	a, b     Oklab
-	speedMin time.Duration
-	speedMax time.Duration
-	timestep time.Duration
+	Groups   map[string]GroupConfig `json:"groups"`
+	Timestep string                 `json:"timestep"`
+}
+
+func (c *Config) TimestepDuration() time.Duration {
+	return util.Must(time.ParseDuration(c.Timestep))
 }
 
 func ColorPayload(color Oklab, transition float64) []byte {

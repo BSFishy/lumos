@@ -9,7 +9,7 @@ import (
 )
 
 var (
-	primaryGroup []string             = nil
+	deviceGroups map[string][]string  = nil
 	devices      map[string]Z2MDevice = nil
 )
 
@@ -31,19 +31,23 @@ type Z2MDevice struct {
 
 func setupGroups(client mqtt.Client) {
 	subscribe(client, "zigbee2mqtt/bridge/groups", 1, func(c mqtt.Client, m mqtt.Message) {
-		var groups []Z2MGroup
-		if err := json.Unmarshal(m.Payload(), &groups); err != nil {
+		var payloadGroups []Z2MGroup
+		if err := json.Unmarshal(m.Payload(), &payloadGroups); err != nil {
 			panic(fmt.Errorf("failed to unmarshal groups: %w", err))
 		}
 
-		for _, group := range groups {
-			if group.FriendlyName == "lumos_primary" {
-				addresses := []string{}
+		deviceGroups = map[string][]string{}
+		for _, group := range payloadGroups {
+			if _, ok := config.Groups[group.FriendlyName]; ok {
 				for _, member := range group.Members {
-					addresses = append(addresses, member.IeeeAddress)
-				}
+					groups, ok := deviceGroups[member.IeeeAddress]
+					if !ok {
+						groups = []string{}
+					}
 
-				primaryGroup = addresses
+					groups = append(groups, group.FriendlyName)
+					deviceGroups[member.IeeeAddress] = groups
+				}
 			}
 		}
 
@@ -66,14 +70,35 @@ func setupGroups(client mqtt.Client) {
 }
 
 func refreshDevices(c mqtt.Client) {
-	if primaryGroup == nil || devices == nil {
+	if deviceGroups == nil || devices == nil {
 		return
 	}
 
-	for _, address := range primaryGroup {
-		friendlyName := devices[address].FriendlyName
+	// TODO: clear all running goroutines
 
-		slog.Info("watching device", "friendly_name", friendlyName)
-		go manager.Start(c, friendlyName)
+	for _, device := range devices {
+		groups, ok := deviceGroups[device.IeeeAddress]
+		if !ok {
+			continue
+		}
+
+		groupName := groups[0]
+		highestPriorityGroup := config.Groups[groups[0]]
+		highestPriority := highestPriorityGroup.Priority
+		for _, group := range groups[1:] {
+			configGroup := config.Groups[group]
+			priority := configGroup.Priority
+
+			if priority > highestPriority {
+				groupName = group
+				highestPriorityGroup = configGroup
+				highestPriority = priority
+			}
+		}
+
+		group := highestPriorityGroup
+		go manager.Start(c, device.FriendlyName, group)
+
+		slog.Info("controlling device", "friendly_name", device.FriendlyName, "group", groupName)
 	}
 }
