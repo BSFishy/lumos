@@ -53,6 +53,15 @@ func OklabFromSRGB(r, g, b float64) Oklab {
 	}
 }
 
+func OklabFromOklch(l, c, h float64) Oklab {
+	h = h * math.Pi / 180.0
+	return Oklab{
+		L: l,
+		A: c * math.Cos(h),
+		B: c * math.Sin(h),
+	}
+}
+
 func (c Oklab) ToSRGB() (r, g, b float64) {
 	// Oklab -> LMS'
 	l_ := c.L + 0.3963377774*c.A + 0.2158037573*c.B

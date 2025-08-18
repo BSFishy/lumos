@@ -14,8 +14,10 @@ var config = Config{
 	Groups: map[string]GroupConfig{
 		"lumos_primary": {
 			Ambient: []Oklab{
-				OklabFromSRGB(0.2, 0.5, 0.8),
-				OklabFromSRGB(0.8, 0.7, 0.3),
+				OklabFromOklch(0.577, 0.245, 27.324),
+				OklabFromOklch(0.768, 0.233, 120.85),
+				OklabFromOklch(0.606, 0.25, 292.717),
+				OklabFromOklch(0.795, 0.184, 86.047),
 			},
 			Transition: Transition{
 				Minimum: "5s",
