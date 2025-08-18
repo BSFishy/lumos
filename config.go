@@ -61,12 +61,12 @@ var config = Config{
 						OklabFromOklch(0.606, 0.25, 292.717),
 					},
 					FadeIn: DateFader{
-						Start: "09-01",
-						End:   "09-20",
+						Start: "10-01",
+						End:   "10-20",
 					},
 					FadeOut: DateFader{
-						Start: "10-01",
-						End:   "10-07",
+						Start: "11-01",
+						End:   "11-07",
 					},
 				},
 			},

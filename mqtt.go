@@ -39,6 +39,7 @@ func SetupMqtt() {
 	opts.SetWriteTimeout(10 * time.Second)
 
 	// (re)subscribe every time we reconnect
+	// TODO: subscribe to topics to tell lumos to stop updating colors
 	opts.OnConnect = setupGroups
 
 	c := mqtt.NewClient(opts)
