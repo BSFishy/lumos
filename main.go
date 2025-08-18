@@ -1,14 +1,25 @@
 package main
 
 import (
-	"github.com/BSFishy/lumos/router"
+	"context"
+	"log/slog"
+	"os"
+	"os/signal"
+	"syscall"
 )
 
 func main() {
 	SetupLogger()
 	SetupMqtt()
 
-	r := router.NewRouter()
+	ctx, stop := signal.NotifyContext(context.Background(),
+		os.Interrupt,    // ^C
+		syscall.SIGTERM, // kill default
+	)
+	defer stop()
 
-	r.ListenAndServe(":8080")
+	slog.Info("waiting for exit signal")
+
+	<-ctx.Done()
+	slog.Info("shutting down")
 }
