@@ -23,13 +23,14 @@ var config = Config{
 			Time: []TimeConfig{
 				{
 					Colors: []Oklab{
-						OklabFromOklch(0.901, 0.076, 70.697),
 						OklabFromOklch(0.75, 0.183, 55.934),
-						OklabFromOklch(0.885, 0.062, 18.334),
 						OklabFromOklch(0.704, 0.191, 22.216),
-						OklabFromOklch(0.924, 0.12, 95.746),
 						OklabFromOklch(0.828, 0.189, 84.429),
-						OklabFromOklch(0.945, 0.129, 101.54),
+						OklabFromOklch(0.852, 0.199, 91.936),
+						OklabFromOklch(0.637, 0.237, 25.331),
+						OklabFromOklch(0.705, 0.213, 47.604),
+						OklabFromOklch(0.769, 0.188, 70.08),
+						OklabFromOklch(0.795, 0.184, 86.047),
 					},
 					FadeIn: Fader{
 						Start: "8:00PM",
