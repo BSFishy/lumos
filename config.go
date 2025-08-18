@@ -41,6 +41,35 @@ var config = Config{
 					},
 				},
 			},
+			Seasonal: []SeasonalConfig{
+				// Halloween
+				{
+					Colors: []Oklab{
+						// Orange
+						OklabFromOklch(0.553, 0.195, 38.402),
+						OklabFromOklch(0.75, 0.183, 55.934),
+						OklabFromOklch(0.555, 0.163, 48.998),
+						OklabFromOklch(0.666, 0.179, 58.318),
+						OklabFromOklch(0.769, 0.188, 70.08),
+
+						// Purple
+						OklabFromOklch(0.518, 0.253, 323.949),
+						OklabFromOklch(0.667, 0.295, 322.15),
+						OklabFromOklch(0.496, 0.265, 301.924),
+						OklabFromOklch(0.627, 0.265, 303.9),
+						OklabFromOklch(0.491, 0.27, 292.581),
+						OklabFromOklch(0.606, 0.25, 292.717),
+					},
+					FadeIn: DateFader{
+						Start: "09-01",
+						End:   "09-20",
+					},
+					FadeOut: DateFader{
+						Start: "10-01",
+						End:   "10-07",
+					},
+				},
+			},
 			Transition: Transition{
 				Minimum: "5s",
 				Maximum: "30s",
@@ -136,22 +165,74 @@ func (t *TimeConfig) SelectColor() (Oklab, float64) {
 	}
 }
 
+type DateFader struct {
+	Start string `json:"start"`
+	End   string `json:"end"`
+}
+
+var dayLayout = "01-02"
+
+func (d *DateFader) StartDate() time.Time {
+	return util.Must(time.ParseInLocation(dayLayout, d.Start, loc))
+}
+
+func (d *DateFader) EndDate() time.Time {
+	return util.Must(time.ParseInLocation(dayLayout, d.End, loc))
+}
+
+type SeasonalConfig struct {
+	FadeIn  DateFader `json:"fade_in"`
+	FadeOut DateFader `json:"fade_out"`
+	Colors  []Oklab   `json:"colors"`
+}
+
+func (s *SeasonalConfig) SelectColor() (Oklab, float64) {
+	if len(s.Colors) == 0 {
+		return Oklab{}, 0
+	}
+	col := s.Colors[rand.IntN(len(s.Colors))]
+
+	now := time.Now().In(loc)
+	y := now.Year()
+	total := yearLength(y)
+
+	fiS := ydayFromMMDD(y, s.FadeIn.StartDate())
+	fiE := ydayFromMMDD(y, s.FadeIn.EndDate())
+	foS := ydayFromMMDD(y, s.FadeOut.StartDate())
+	foE := ydayFromMMDD(y, s.FadeOut.EndDate())
+	n := now.YearDay() - 1 // 0-based
+
+	switch {
+	case inArcDays(fiS, fiE, n, total): // fading in
+		return col, fracAlongDays(fiS, fiE, n, total)
+	case inArcDays(fiE, foS, n, total): // fully on
+		return col, 1.0
+	case inArcDays(foS, foE, n, total): // fading out
+		return col, 1.0 - fracAlongDays(foS, foE, n, total)
+	default: // off
+		return col, 0.0
+	}
+}
+
 type GroupConfig struct {
-	Priority   uint         `json:"priority"`
-	Ambient    []Oklab      `json:"ambient"`
-	Time       []TimeConfig `json:"time"`
-	Transition Transition   `json:"transition"`
-	Hold       Transition   `json:"hold"`
+	Priority   uint             `json:"priority"`
+	Ambient    []Oklab          `json:"ambient"`
+	Time       []TimeConfig     `json:"time"`
+	Seasonal   []SeasonalConfig `json:"seasonal"`
+	Transition Transition       `json:"transition"`
+	Hold       Transition       `json:"hold"`
 }
 
 func (g *GroupConfig) SelectColor() Oklab {
 	color := g.Ambient[rand.IntN(len(g.Ambient))]
 
+	for _, seasonConfig := range g.Seasonal {
+		color = color.Lerp(seasonConfig.SelectColor())
+	}
+
 	for _, timeConfig := range g.Time {
 		color = color.Lerp(timeConfig.SelectColor())
 	}
-
-	// TODO: overlay time season color
 
 	return color
 }
@@ -232,4 +313,40 @@ func fracAlong(a, b, x int) float64 {
 		return 1.0
 	}
 	return float64(distFwd(a, x)) / float64(total)
+}
+
+func yearLength(y int) int {
+	if (y%4 == 0 && y%100 != 0) || (y%400 == 0) {
+		return 366
+	}
+	return 365
+}
+
+// Parse "MM-DD" and convert to 0-based yearday for given year.
+func ydayFromMMDD(year int, t time.Time) int {
+	tt := time.Date(year, t.Month(), t.Day(), 0, 0, 0, 0, loc)
+	return tt.YearDay() - 1 // 0-based
+}
+
+// Is x on the forward arc a→b (inclusive) on a 0..total-1 ring.
+func inArcDays(a, b, x, total int) bool {
+	return distFwdDays(a, x, total) <= distFwdDays(a, b, total)
+}
+
+// Forward modular distance a→b.
+func distFwdDays(a, b, total int) int {
+	d := (b - a) % total
+	if d < 0 {
+		d += total
+	}
+	return d
+}
+
+// Fractional position of x on arc a→b (handles wrap). If a==b, treat as instant (1).
+func fracAlongDays(a, b, x, total int) float64 {
+	tot := distFwdDays(a, b, total)
+	if tot == 0 {
+		return 1.0
+	}
+	return float64(distFwdDays(a, x, total)) / float64(tot)
 }
