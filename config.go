@@ -41,7 +41,7 @@ var config = Config{
 						"oklch(76.9% 0.188 70.08)",
 					},
 					FadeIn: Fader{
-						Start: "8:00PM",
+						Start: "7:00PM",
 						End:   "10:00PM",
 					},
 					FadeOut: Fader{
@@ -174,14 +174,27 @@ func mustLoadLocation() *time.Location {
 type Transition struct {
 	Minimum string `json:"min"`
 	Maximum string `json:"max"`
+
+	minimum *time.Duration
+	maximum *time.Duration
 }
 
 func (t *Transition) Min() time.Duration {
-	return util.Must(time.ParseDuration(t.Minimum))
+	if t.minimum == nil {
+		minimum := util.Must(time.ParseDuration(t.Minimum))
+		t.minimum = &minimum
+	}
+
+	return *t.minimum
 }
 
 func (t *Transition) Max() time.Duration {
-	return util.Must(time.ParseDuration(t.Maximum))
+	if t.maximum == nil {
+		maximum := util.Must(time.ParseDuration(t.Maximum))
+		t.maximum = &maximum
+	}
+
+	return *t.maximum
 }
 
 func (t *Transition) Select() time.Duration {
@@ -192,14 +205,27 @@ func (t *Transition) Select() time.Duration {
 type Fader struct {
 	Start string `json:"start"`
 	End   string `json:"end"`
+
+	start *time.Time
+	end   *time.Time
 }
 
 func (f *Fader) StartTime() time.Time {
-	return util.Must(time.ParseInLocation(time.Kitchen, f.Start, loc))
+	if f.start == nil {
+		start := util.Must(time.ParseInLocation(time.Kitchen, f.Start, loc))
+		f.start = &start
+	}
+
+	return *f.start
 }
 
 func (f *Fader) EndTime() time.Time {
-	return util.Must(time.ParseInLocation(time.Kitchen, f.End, loc))
+	if f.end == nil {
+		end := util.Must(time.ParseInLocation(time.Kitchen, f.End, loc))
+		f.end = &end
+	}
+
+	return *f.end
 }
 
 type TimeConfig struct {
@@ -255,16 +281,29 @@ func (t *TimeConfig) SelectColor() (Oklab, float64) {
 type DateFader struct {
 	Start string `json:"start"`
 	End   string `json:"end"`
+
+	start *time.Time
+	end   *time.Time
 }
 
 var dayLayout = "01-02"
 
 func (d *DateFader) StartDate() time.Time {
-	return util.Must(time.ParseInLocation(dayLayout, d.Start, loc))
+	if d.start == nil {
+		start := util.Must(time.ParseInLocation(dayLayout, d.Start, loc))
+		d.start = &start
+	}
+
+	return *d.start
 }
 
 func (d *DateFader) EndDate() time.Time {
-	return util.Must(time.ParseInLocation(dayLayout, d.End, loc))
+	if d.end == nil {
+		end := util.Must(time.ParseInLocation(dayLayout, d.End, loc))
+		d.end = &end
+	}
+
+	return *d.end
 }
 
 type SeasonalConfig struct {
