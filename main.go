@@ -10,6 +10,7 @@ import (
 
 func main() {
 	SetupLogger()
+	SetupConfig()
 	SetupMqtt()
 
 	ctx, stop := signal.NotifyContext(context.Background(),

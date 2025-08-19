@@ -2,7 +2,9 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"log/slog"
 	"math/rand/v2"
 	"os"
 	"strconv"
@@ -12,7 +14,26 @@ import (
 	"github.com/BSFishy/lumos/util"
 )
 
-// TODO: read config from file
+func SetupConfig() {
+	contents, err := os.ReadFile("/config/config.json")
+	if err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			panic(fmt.Errorf("failed to read config file: %w", err))
+		}
+
+		slog.Info("no config file found")
+		return
+	}
+
+	var data Config
+	if err = json.Unmarshal(contents, &data); err != nil {
+		slog.Warn("failed to decode config, using default", "err", err)
+		return
+	}
+
+	config = data
+}
+
 var config = Config{
 	Groups: map[string]GroupConfig{
 		"lumos_primary": {
@@ -399,10 +420,17 @@ func (g *GroupConfig) SelectColor() Oklab {
 type Config struct {
 	Groups   map[string]GroupConfig `json:"groups"`
 	Timestep string                 `json:"timestep"`
+
+	timestep *time.Duration
 }
 
 func (c *Config) TimestepDuration() time.Duration {
-	return util.Must(time.ParseDuration(c.Timestep))
+	if c.timestep == nil {
+		timestep := util.Must(time.ParseDuration(c.Timestep))
+		c.timestep = &timestep
+	}
+
+	return *c.timestep
 }
 
 func ColorPayload(color Oklab, transition float64) []byte {
