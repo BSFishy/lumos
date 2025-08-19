@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"math/rand/v2"
 	"os"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/BSFishy/lumos/util"
@@ -14,23 +16,29 @@ import (
 var config = Config{
 	Groups: map[string]GroupConfig{
 		"lumos_primary": {
-			Ambient: []Oklab{
-				OklabFromOklch(0.577, 0.245, 27.324),
-				OklabFromOklch(0.768, 0.233, 120.85),
-				OklabFromOklch(0.606, 0.25, 292.717),
-				OklabFromOklch(0.795, 0.184, 86.047),
+			Ambient: []Color{
+				"oklch(57.7% 0.245 27.325)",
+				"oklch(64.6% 0.222 41.116)",
+				"oklch(64.8% 0.2 131.684)",
+				"oklch(54.6% 0.245 262.881)",
+				"oklch(54.1% 0.281 293.009)",
+				"oklch(66.7% 0.295 322.15)",
 			},
 			Time: []TimeConfig{
 				{
-					Colors: []Oklab{
-						OklabFromOklch(0.75, 0.183, 55.934),
-						OklabFromOklch(0.704, 0.191, 22.216),
-						OklabFromOklch(0.828, 0.189, 84.429),
-						OklabFromOklch(0.852, 0.199, 91.936),
-						OklabFromOklch(0.637, 0.237, 25.331),
-						OklabFromOklch(0.705, 0.213, 47.604),
-						OklabFromOklch(0.769, 0.188, 70.08),
-						OklabFromOklch(0.795, 0.184, 86.047),
+					Colors: []Color{
+						// Orange
+						"oklch(75% 0.183 55.934)",
+						"oklch(70.5% 0.213 47.604)",
+						// Red
+						"oklch(70.4% 0.191 22.216)",
+						"oklch(63.7% 0.237 25.331)",
+						// Yellow
+						"oklch(82.8% 0.189 84.429)",
+						"oklch(85.2% 0.199 91.936)",
+						"oklch(79.5% 0.184 86.047)",
+						// Amber
+						"oklch(76.9% 0.188 70.08)",
 					},
 					FadeIn: Fader{
 						Start: "8:00PM",
@@ -45,21 +53,25 @@ var config = Config{
 			Seasonal: []SeasonalConfig{
 				// Halloween
 				{
-					Colors: []Oklab{
+					Colors: []Color{
 						// Orange
-						OklabFromOklch(0.553, 0.195, 38.402),
-						OklabFromOklch(0.75, 0.183, 55.934),
-						OklabFromOklch(0.555, 0.163, 48.998),
-						OklabFromOklch(0.666, 0.179, 58.318),
-						OklabFromOklch(0.769, 0.188, 70.08),
+						"oklch(55.3% 0.195 38.402)",
+						"oklch(64.6% 0.222 41.116)",
+						"oklch(70.5% 0.213 47.604)",
+						// Amber
+						"oklch(55.5% 0.163 48.998)",
+						"oklch(66.6% 0.179 58.318)",
+						"oklch(76.9% 0.188 70.08)",
 
+						// Fuchsia
+						"oklch(51.8% 0.253 323.949)",
+						"oklch(66.7% 0.295 322.15)",
 						// Purple
-						OklabFromOklch(0.518, 0.253, 323.949),
-						OklabFromOklch(0.667, 0.295, 322.15),
-						OklabFromOklch(0.496, 0.265, 301.924),
-						OklabFromOklch(0.627, 0.265, 303.9),
-						OklabFromOklch(0.491, 0.27, 292.581),
-						OklabFromOklch(0.606, 0.25, 292.717),
+						"oklch(49.6% 0.265 301.924)",
+						"oklch(62.7% 0.265 303.9)",
+						// Violet
+						"oklch(49.1% 0.27 292.581)",
+						"oklch(60.6% 0.25 292.717)",
 					},
 					FadeIn: DateFader{
 						Start: "10-01",
@@ -82,6 +94,64 @@ var config = Config{
 		},
 	},
 	Timestep: "1s",
+}
+
+type Color string
+
+func (co Color) Evaluate() Oklab {
+	c := string(co)
+	if strings.HasPrefix(c, "#") {
+		switch len(c) {
+		case 7:
+			r := util.Must(strconv.ParseUint(c[1:3], 16, 8))
+			g := util.Must(strconv.ParseUint(c[3:5], 16, 8))
+			b := util.Must(strconv.ParseUint(c[5:7], 16, 8))
+
+			return OklabFromSRGB(float64(r)/255, float64(g)/255, float64(b)/255)
+
+		case 4:
+			r := util.Must(strconv.ParseUint(string([]byte{c[1]}), 16, 8))
+			g := util.Must(strconv.ParseUint(string([]byte{c[2]}), 16, 8))
+			b := util.Must(strconv.ParseUint(string([]byte{c[3]}), 16, 8))
+
+			return OklabFromSRGB(float64(r)/15, float64(g)/15, float64(b)/15)
+
+		default:
+			panic(fmt.Sprintf("invalid hex color: %s", c))
+		}
+	}
+
+	if strings.HasPrefix(c, "oklab(") && strings.HasSuffix(c, ")") {
+		params := strings.FieldsFunc(c[6:len(c)-1], func(r rune) bool { return r == ',' || r == ' ' || r == '\t' })
+
+		Lpercent := strings.TrimSpace(params[0])
+		util.Assert(strings.HasSuffix(Lpercent, "%"), "invalid oklab format")
+
+		L := util.Must(strconv.ParseFloat(Lpercent[0:len(Lpercent)-1], 64)) / 100
+		A := util.Must(strconv.ParseFloat(strings.TrimSpace(params[1]), 64))
+		B := util.Must(strconv.ParseFloat(strings.TrimSpace(params[2]), 64))
+
+		return Oklab{
+			L: L,
+			A: A,
+			B: B,
+		}
+	}
+
+	if strings.HasPrefix(c, "oklch(") && strings.HasSuffix(c, ")") {
+		params := strings.FieldsFunc(c[6:len(c)-1], func(r rune) bool { return r == ',' || r == ' ' || r == '\t' })
+
+		Lpercent := strings.TrimSpace(params[0])
+		util.Assert(strings.HasSuffix(Lpercent, "%"), "invalid oklab format")
+
+		L := util.Must(strconv.ParseFloat(Lpercent[0:len(Lpercent)-1], 64)) / 100
+		C := util.Must(strconv.ParseFloat(strings.TrimSpace(params[1]), 64))
+		H := util.Must(strconv.ParseFloat(strings.TrimSpace(params[2]), 64))
+
+		return OklabFromOklch(L, C, H)
+	}
+
+	panic(fmt.Sprintf("invalid color format: %s", c))
 }
 
 var loc = mustLoadLocation()
@@ -135,7 +205,23 @@ func (f *Fader) EndTime() time.Time {
 type TimeConfig struct {
 	FadeIn  Fader   `json:"fade_in"`
 	FadeOut Fader   `json:"fade_out"`
-	Colors  []Oklab `json:"colors"`
+	Colors  []Color `json:"colors"`
+
+	colors []Oklab
+}
+
+func (t *TimeConfig) getColors() []Oklab {
+	if t.colors != nil {
+		return t.colors
+	}
+
+	colors := make([]Oklab, len(t.Colors))
+	for i, color := range t.Colors {
+		colors[i] = color.Evaluate()
+	}
+
+	t.colors = colors
+	return colors
 }
 
 func (t *TimeConfig) SelectColor() (Oklab, float64) {
@@ -143,7 +229,7 @@ func (t *TimeConfig) SelectColor() (Oklab, float64) {
 	if len(t.Colors) == 0 {
 		return Oklab{}, 0
 	}
-	col := t.Colors[rand.IntN(len(t.Colors))]
+	col := t.getColors()[rand.IntN(len(t.Colors))]
 
 	now := time.Now().In(loc)
 	n := minutesSinceMidnight(now)
@@ -184,14 +270,30 @@ func (d *DateFader) EndDate() time.Time {
 type SeasonalConfig struct {
 	FadeIn  DateFader `json:"fade_in"`
 	FadeOut DateFader `json:"fade_out"`
-	Colors  []Oklab   `json:"colors"`
+	Colors  []Color   `json:"colors"`
+
+	colors []Oklab
+}
+
+func (s *SeasonalConfig) getColors() []Oklab {
+	if s.colors != nil {
+		return s.colors
+	}
+
+	colors := make([]Oklab, len(s.Colors))
+	for i, color := range s.Colors {
+		colors[i] = color.Evaluate()
+	}
+
+	s.colors = colors
+	return colors
 }
 
 func (s *SeasonalConfig) SelectColor() (Oklab, float64) {
 	if len(s.Colors) == 0 {
 		return Oklab{}, 0
 	}
-	col := s.Colors[rand.IntN(len(s.Colors))]
+	col := s.getColors()[rand.IntN(len(s.Colors))]
 
 	now := time.Now().In(loc)
 	y := now.Year()
@@ -217,15 +319,32 @@ func (s *SeasonalConfig) SelectColor() (Oklab, float64) {
 
 type GroupConfig struct {
 	Priority   uint             `json:"priority"`
-	Ambient    []Oklab          `json:"ambient"`
+	Ambient    []Color          `json:"ambient"`
 	Time       []TimeConfig     `json:"time"`
 	Seasonal   []SeasonalConfig `json:"seasonal"`
 	Transition Transition       `json:"transition"`
 	Hold       Transition       `json:"hold"`
+
+	// evaluated
+	ambientColors []Oklab
+}
+
+func (g *GroupConfig) colors() []Oklab {
+	if g.ambientColors != nil {
+		return g.ambientColors
+	}
+
+	colors := make([]Oklab, len(g.Ambient))
+	for i, color := range g.Ambient {
+		colors[i] = color.Evaluate()
+	}
+
+	g.ambientColors = colors
+	return colors
 }
 
 func (g *GroupConfig) SelectColor() Oklab {
-	color := g.Ambient[rand.IntN(len(g.Ambient))]
+	color := g.colors()[rand.IntN(len(g.Ambient))]
 
 	for _, seasonConfig := range g.Seasonal {
 		color = color.Lerp(seasonConfig.SelectColor())
