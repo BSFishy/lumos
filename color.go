@@ -28,12 +28,16 @@ func OklchWaypoints(from, to Oklch, steps int) []Oklch {
 }
 
 func lerpHue(a, b, t float64) float64 {
-	d := math.Mod(b-a+180, 360) - 180
-	h := a + d*t
-	h = math.Mod(h, 360)
-	if h < 0 {
-		h += 360
+	// Compute the shortest angular difference between a and b.
+	// math.Mod returns a value with the same sign as its argument, so
+	// normalize into [0,360) before adjusting into [-180,180].
+	d := math.Mod(math.Mod(b-a, 360)+360, 360)
+	if d > 180 {
+		d -= 360
 	}
+
+	h := a + d*t
+	h = math.Mod(math.Mod(h, 360)+360, 360)
 	return h
 }
 
