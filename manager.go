@@ -58,7 +58,7 @@ type ColorManager struct {
 	friendlyName string
 	groupConfig  GroupConfig
 
-	previousColor, nextColor Oklab
+	previousColor, nextColor Oklch
 	start, end               time.Time
 }
 
