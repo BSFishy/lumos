@@ -2,30 +2,24 @@ package main
 
 import "math"
 
-type Oklab struct{ L, A, B float64 } // L in [0..1], A/B roughly [-0.5..0.5]
+type Oklch struct{ L, C, H float64 } // L in [0..1], H in degrees [0..360)
 
 // ---------- Blending ----------
-func (c Oklab) Lerp(to Oklab, t float64) Oklab {
-	return Oklab{
+func (c Oklch) Lerp(to Oklch, t float64) Oklch {
+	return Oklch{
 		L: c.L + (to.L-c.L)*t,
-		A: c.A + (to.A-c.A)*t,
-		B: c.B + (to.B-c.B)*t,
+		C: c.C + (to.C-c.C)*t,
+		H: lerpHue(c.H, to.H, t),
 	}
 }
 
-// Euclidean distance in Oklab (good for ΔE gating)
-func (c Oklab) DeltaE(o Oklab) float64 {
-	dL, dA, dB := c.L-o.L, c.A-o.A, c.B-o.B
-	return math.Hypot(dL, math.Hypot(dA, dB))
-}
-
-// Generate N waypoints along the Oklab line (inclusive of endpoints).
+// Generate N waypoints along the Oklch line (inclusive of endpoints).
 // Use these as keyframes; send each with a per-step `transition`.
-func OklabWaypoints(from, to Oklab, steps int) []Oklab {
+func OklchWaypoints(from, to Oklch, steps int) []Oklch {
 	if steps < 2 {
 		steps = 2
 	}
-	out := make([]Oklab, steps)
+	out := make([]Oklch, steps)
 	for i := 0; i < steps; i++ {
 		t := float64(i) / float64(steps-1)
 		out[i] = from.Lerp(to, t)
@@ -33,8 +27,18 @@ func OklabWaypoints(from, to Oklab, steps int) []Oklab {
 	return out
 }
 
-// ---------- sRGB <-> Oklab ----------
-func OklabFromSRGB(r, g, b float64) Oklab {
+func lerpHue(a, b, t float64) float64 {
+	d := math.Mod(b-a+180, 360) - 180
+	h := a + d*t
+	h = math.Mod(h, 360)
+	if h < 0 {
+		h += 360
+	}
+	return h
+}
+
+// ---------- sRGB <-> Oklch ----------
+func OklchFromSRGB(r, g, b float64) Oklch {
 	rl, gl, bl := srgbToLinear(r), srgbToLinear(g), srgbToLinear(b)
 
 	// linear RGB -> LMS
@@ -46,27 +50,30 @@ func OklabFromSRGB(r, g, b float64) Oklab {
 	m_ := cbrt(m)
 	s_ := cbrt(s)
 
-	return Oklab{
-		L: 0.2104542553*l_ + 0.7936177850*m_ - 0.0040720468*s_,
-		A: 1.9779984951*l_ - 2.4285922050*m_ + 0.4505937099*s_,
-		B: 0.0259040371*l_ + 0.7827717662*m_ - 0.8086757660*s_,
+	L := 0.2104542553*l_ + 0.7936177850*m_ - 0.0040720468*s_
+	A := 1.9779984951*l_ - 2.4285922050*m_ + 0.4505937099*s_
+	B := 0.0259040371*l_ + 0.7827717662*m_ - 0.8086757660*s_
+
+	h := math.Atan2(B, A) * 180 / math.Pi
+	if h < 0 {
+		h += 360
+	}
+	return Oklch{
+		L: L,
+		C: math.Hypot(A, B),
+		H: h,
 	}
 }
 
-func OklabFromOklch(l, c, h float64) Oklab {
-	h = h * math.Pi / 180.0
-	return Oklab{
-		L: l,
-		A: c * math.Cos(h),
-		B: c * math.Sin(h),
-	}
-}
+func (c Oklch) ToSRGB() (r, g, b float64) {
+	h := c.H * math.Pi / 180.0
+	a := c.C * math.Cos(h)
+	b_ := c.C * math.Sin(h)
 
-func (c Oklab) ToSRGB() (r, g, b float64) {
-	// Oklab -> LMS'
-	l_ := c.L + 0.3963377774*c.A + 0.2158037573*c.B
-	m_ := c.L - 0.1055613458*c.A - 0.0638541728*c.B
-	s_ := c.L - 0.0894841775*c.A - 1.2914855480*c.B
+	// Oklch -> LMS'
+	l_ := c.L + 0.3963377774*a + 0.2158037573*b_
+	m_ := c.L - 0.1055613458*a - 0.0638541728*b_
+	s_ := c.L - 0.0894841775*a - 1.2914855480*b_
 
 	l := l_ * l_ * l_
 	m := m_ * m_ * m_
@@ -87,13 +94,13 @@ func (c Oklab) ToSRGB() (r, g, b float64) {
 // ---------- Helpers (HSV + xy if you need them) ----------
 
 // ToHSB/HSV via sRGB (h in [0,360), s,v in [0,1])
-func (c Oklab) ToHSV() (h, s, v float64) {
+func (c Oklch) ToHSV() (h, s, v float64) {
 	r, g, b := c.ToSRGB()
 	return rgbToHSV(r, g, b)
 }
 
 // CIE 1931 xy (sRGB/D65). If all zero, returns 0,0.
-func (c Oklab) ToXY() (x, y float64) {
+func (c Oklch) ToXY() (x, y float64) {
 	r, g, b := c.ToSRGB()
 	rl, gl, bl := srgbToLinear(r), srgbToLinear(g), srgbToLinear(b)
 	X := 0.4124564*rl + 0.3575761*gl + 0.1804375*bl

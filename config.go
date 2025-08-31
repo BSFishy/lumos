@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"math/rand/v2"
 	"os"
 	"strconv"
@@ -119,7 +120,7 @@ var config = Config{
 
 type Color string
 
-func (co Color) Evaluate() Oklab {
+func (co Color) Evaluate() Oklch {
 	c := string(co)
 	if strings.HasPrefix(c, "#") {
 		switch len(c) {
@@ -128,14 +129,14 @@ func (co Color) Evaluate() Oklab {
 			g := util.Must(strconv.ParseUint(c[3:5], 16, 8))
 			b := util.Must(strconv.ParseUint(c[5:7], 16, 8))
 
-			return OklabFromSRGB(float64(r)/255, float64(g)/255, float64(b)/255)
+			return OklchFromSRGB(float64(r)/255, float64(g)/255, float64(b)/255)
 
 		case 4:
 			r := util.Must(strconv.ParseUint(string([]byte{c[1]}), 16, 8))
 			g := util.Must(strconv.ParseUint(string([]byte{c[2]}), 16, 8))
 			b := util.Must(strconv.ParseUint(string([]byte{c[3]}), 16, 8))
 
-			return OklabFromSRGB(float64(r)/15, float64(g)/15, float64(b)/15)
+			return OklchFromSRGB(float64(r)/15, float64(g)/15, float64(b)/15)
 
 		default:
 			panic(fmt.Sprintf("invalid hex color: %s", c))
@@ -152,11 +153,11 @@ func (co Color) Evaluate() Oklab {
 		A := util.Must(strconv.ParseFloat(strings.TrimSpace(params[1]), 64))
 		B := util.Must(strconv.ParseFloat(strings.TrimSpace(params[2]), 64))
 
-		return Oklab{
-			L: L,
-			A: A,
-			B: B,
+		H := math.Atan2(B, A) * 180 / math.Pi
+		if H < 0 {
+			H += 360
 		}
+		return Oklch{L: L, C: math.Hypot(A, B), H: H}
 	}
 
 	if strings.HasPrefix(c, "oklch(") && strings.HasSuffix(c, ")") {
@@ -169,7 +170,7 @@ func (co Color) Evaluate() Oklab {
 		C := util.Must(strconv.ParseFloat(strings.TrimSpace(params[1]), 64))
 		H := util.Must(strconv.ParseFloat(strings.TrimSpace(params[2]), 64))
 
-		return OklabFromOklch(L, C, H)
+		return Oklch{L: L, C: C, H: H}
 	}
 
 	panic(fmt.Sprintf("invalid color format: %s", c))
@@ -254,15 +255,15 @@ type TimeConfig struct {
 	FadeOut Fader   `json:"fade_out"`
 	Colors  []Color `json:"colors"`
 
-	colors []Oklab
+	colors []Oklch
 }
 
-func (t *TimeConfig) getColors() []Oklab {
+func (t *TimeConfig) getColors() []Oklch {
 	if t.colors != nil {
 		return t.colors
 	}
 
-	colors := make([]Oklab, len(t.Colors))
+	colors := make([]Oklch, len(t.Colors))
 	for i, color := range t.Colors {
 		colors[i] = color.Evaluate()
 	}
@@ -271,10 +272,10 @@ func (t *TimeConfig) getColors() []Oklab {
 	return colors
 }
 
-func (t *TimeConfig) SelectColor() (Oklab, float64) {
+func (t *TimeConfig) SelectColor() (Oklch, float64) {
 	// fallback if no colors configured
 	if len(t.Colors) == 0 {
-		return Oklab{}, 0
+		return Oklch{}, 0
 	}
 	col := t.getColors()[rand.IntN(len(t.Colors))]
 
@@ -332,15 +333,15 @@ type SeasonalConfig struct {
 	FadeOut DateFader `json:"fade_out"`
 	Colors  []Color   `json:"colors"`
 
-	colors []Oklab
+	colors []Oklch
 }
 
-func (s *SeasonalConfig) getColors() []Oklab {
+func (s *SeasonalConfig) getColors() []Oklch {
 	if s.colors != nil {
 		return s.colors
 	}
 
-	colors := make([]Oklab, len(s.Colors))
+	colors := make([]Oklch, len(s.Colors))
 	for i, color := range s.Colors {
 		colors[i] = color.Evaluate()
 	}
@@ -349,9 +350,9 @@ func (s *SeasonalConfig) getColors() []Oklab {
 	return colors
 }
 
-func (s *SeasonalConfig) SelectColor() (Oklab, float64) {
+func (s *SeasonalConfig) SelectColor() (Oklch, float64) {
 	if len(s.Colors) == 0 {
-		return Oklab{}, 0
+		return Oklch{}, 0
 	}
 	col := s.getColors()[rand.IntN(len(s.Colors))]
 
@@ -386,15 +387,15 @@ type GroupConfig struct {
 	Hold       Transition       `json:"hold"`
 
 	// evaluated
-	ambientColors []Oklab
+	ambientColors []Oklch
 }
 
-func (g *GroupConfig) colors() []Oklab {
+func (g *GroupConfig) colors() []Oklch {
 	if g.ambientColors != nil {
 		return g.ambientColors
 	}
 
-	colors := make([]Oklab, len(g.Ambient))
+	colors := make([]Oklch, len(g.Ambient))
 	for i, color := range g.Ambient {
 		colors[i] = color.Evaluate()
 	}
@@ -403,7 +404,7 @@ func (g *GroupConfig) colors() []Oklab {
 	return colors
 }
 
-func (g *GroupConfig) SelectColor() Oklab {
+func (g *GroupConfig) SelectColor() Oklch {
 	color := g.colors()[rand.IntN(len(g.Ambient))]
 
 	for _, seasonConfig := range g.Seasonal {
@@ -433,7 +434,7 @@ func (c *Config) TimestepDuration() time.Duration {
 	return *c.timestep
 }
 
-func ColorPayload(color Oklab, transition float64) []byte {
+func ColorPayload(color Oklch, transition float64) []byte {
 	type Color struct {
 		X float64 `json:"x"`
 		Y float64 `json:"y"`
