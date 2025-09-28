@@ -176,6 +176,38 @@ func (co Color) Evaluate() Oklch {
 	panic(fmt.Sprintf("invalid color format: %s", c))
 }
 
+type Colors struct {
+	unparsed []Color
+
+	colors             []Oklch
+	previouslySelected uint
+}
+
+func (c *Colors) getColors() []Oklch {
+	if c.colors != nil {
+		return c.colors
+	}
+
+	colors := make([]Oklch, len(c.unparsed))
+	for i, color := range c.unparsed {
+		colors[i] = color.Evaluate()
+	}
+
+	c.colors = colors
+	return colors
+}
+
+func (c *Colors) Select() Oklch {
+	idx := rand.UintN(uint(len(c.colors)) - 1)
+	if idx == c.previouslySelected {
+		idx = uint(len(c.colors)) - 1
+	}
+
+	col := c.getColors()[idx]
+	c.previouslySelected = idx
+	return col
+}
+
 var loc = mustLoadLocation()
 
 func mustLoadLocation() *time.Location {
@@ -255,21 +287,17 @@ type TimeConfig struct {
 	FadeOut Fader   `json:"fade_out"`
 	Colors  []Color `json:"colors"`
 
-	colors []Oklch
+	colors *Colors
 }
 
-func (t *TimeConfig) getColors() []Oklch {
-	if t.colors != nil {
-		return t.colors
+func (t *TimeConfig) getColors() *Colors {
+	if t.colors == nil {
+		t.colors = &Colors{
+			unparsed: t.Colors,
+		}
 	}
 
-	colors := make([]Oklch, len(t.Colors))
-	for i, color := range t.Colors {
-		colors[i] = color.Evaluate()
-	}
-
-	t.colors = colors
-	return colors
+	return t.colors
 }
 
 func (t *TimeConfig) SelectColor() (Oklch, float64) {
@@ -277,7 +305,7 @@ func (t *TimeConfig) SelectColor() (Oklch, float64) {
 	if len(t.Colors) == 0 {
 		return Oklch{}, 0
 	}
-	col := t.getColors()[rand.IntN(len(t.Colors))]
+	col := t.getColors().Select()
 
 	now := time.Now().In(loc)
 	n := minutesSinceMidnight(now)
@@ -333,28 +361,24 @@ type SeasonalConfig struct {
 	FadeOut DateFader `json:"fade_out"`
 	Colors  []Color   `json:"colors"`
 
-	colors []Oklch
+	colors *Colors
 }
 
-func (s *SeasonalConfig) getColors() []Oklch {
-	if s.colors != nil {
-		return s.colors
+func (s *SeasonalConfig) getColors() *Colors {
+	if s.colors == nil {
+		s.colors = &Colors{
+			unparsed: s.Colors,
+		}
 	}
 
-	colors := make([]Oklch, len(s.Colors))
-	for i, color := range s.Colors {
-		colors[i] = color.Evaluate()
-	}
-
-	s.colors = colors
-	return colors
+	return s.colors
 }
 
 func (s *SeasonalConfig) SelectColor() (Oklch, float64) {
 	if len(s.Colors) == 0 {
 		return Oklch{}, 0
 	}
-	col := s.getColors()[rand.IntN(len(s.Colors))]
+	col := s.getColors().Select()
 
 	now := time.Now().In(loc)
 	y := now.Year()
@@ -387,25 +411,21 @@ type GroupConfig struct {
 	Hold       Transition       `json:"hold"`
 
 	// evaluated
-	ambientColors []Oklch
+	ambientColors *Colors
 }
 
-func (g *GroupConfig) colors() []Oklch {
-	if g.ambientColors != nil {
-		return g.ambientColors
+func (g *GroupConfig) colors() *Colors {
+	if g.ambientColors == nil {
+		g.ambientColors = &Colors{
+			unparsed: g.Ambient,
+		}
 	}
 
-	colors := make([]Oklch, len(g.Ambient))
-	for i, color := range g.Ambient {
-		colors[i] = color.Evaluate()
-	}
-
-	g.ambientColors = colors
-	return colors
+	return g.ambientColors
 }
 
 func (g *GroupConfig) SelectColor() Oklch {
-	color := g.colors()[rand.IntN(len(g.Ambient))]
+	color := g.colors().Select()
 
 	for _, seasonConfig := range g.Seasonal {
 		color = color.Lerp(seasonConfig.SelectColor())
