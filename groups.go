@@ -58,7 +58,7 @@ func onGroups(c mqtt.Client, m mqtt.Message) {
 
 	deviceGroups = map[string][]string{}
 	for _, group := range payloadGroups {
-		if _, ok := config.Groups[group.FriendlyName]; ok {
+		if config.ContainsGroup(group.FriendlyName) {
 			for _, member := range group.Members {
 				deviceGroups[member.IeeeAddress] = append(deviceGroups[member.IeeeAddress], group.FriendlyName)
 			}
@@ -98,18 +98,10 @@ func refreshDevices(c mqtt.Client) {
 			continue
 		}
 
-		groupName := groups[0]
-		highestPriority := config.Groups[groupName].Priority
-		for _, group := range groups[1:] {
-			if priority := config.Groups[group].Priority; priority > highestPriority {
-				groupName = group
-				highestPriority = priority
-			}
-		}
+		manager.Start(c, device.FriendlyName, config.Compile(groups))
 
-		group := config.Groups[groupName]
-		manager.Start(c, device.FriendlyName, group)
-
-		slog.Info("controlling device", "friendly_name", device.FriendlyName, "group", groupName)
+		slog.Info("controlling device", "friendly_name", device.FriendlyName)
 	}
+
+	slog.Info("config refreshed")
 }

@@ -20,7 +20,7 @@ spec:
             - name: LEVEL
               value: DEBUG
             - name: MQTT_BROKER
-              value: mqtt://mosquitto.mosquitto.svc.cluster.local:1883
+              value: mqtt://mosquitto.home.svc.cluster.local:1883
           volumeMounts:
             - name: lumos-config
               mountPath: /config/config.json
@@ -38,21 +38,21 @@ metadata:
 data:
   config.json: |
     {
-      "groups": {
-        "lumos_primary": {
-          "ambient": [
+      "timestep": "1s",
+      "transition": {
+        "min": "1s",
+        "max": "2s"
+      },
+      "hold": {
+        "min": "0s",
+        "max": "1s"
+      },
+      "groups": [
+        {
+          "colors": [
             "oklch(43.8% 0.218 303.724)",
             "oklch(44.4% 0.177 26.899)"
-          ],
-          "transition": {
-            "min": "1s",
-            "max": "2s"
-          },
-          "hold": {
-            "min": "0s",
-            "max": "1s"
-          }
+          ]
         }
-      },
-      "timestep": "1s"
+      ]
     }

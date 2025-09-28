@@ -8,6 +8,6 @@ k8s_yaml([
   'dev/k8s/deployment.yaml'
 ])
 
-allow_k8s_contexts('default')
+allow_k8s_contexts('admin@homelab')
 
 k8s_resource('lumos', port_forwards=[8080])

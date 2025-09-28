@@ -8,6 +8,7 @@ import (
 	"math"
 	"math/rand/v2"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -36,85 +37,7 @@ func SetupConfig() {
 }
 
 var config = Config{
-	Groups: map[string]GroupConfig{
-		"lumos_primary": {
-			Ambient: []Color{
-				"oklch(57.7% 0.245 27.325)",
-				"oklch(64.6% 0.222 41.116)",
-				"oklch(64.8% 0.2 131.684)",
-				"oklch(54.6% 0.245 262.881)",
-				"oklch(54.1% 0.281 293.009)",
-				"oklch(66.7% 0.295 322.15)",
-			},
-			Time: []TimeConfig{
-				{
-					Colors: []Color{
-						// Orange
-						"oklch(75% 0.183 55.934)",
-						"oklch(70.5% 0.213 47.604)",
-						// Red
-						"oklch(70.4% 0.191 22.216)",
-						"oklch(63.7% 0.237 25.331)",
-						// Yellow
-						"oklch(82.8% 0.189 84.429)",
-						"oklch(85.2% 0.199 91.936)",
-						"oklch(79.5% 0.184 86.047)",
-						// Amber
-						"oklch(76.9% 0.188 70.08)",
-					},
-					FadeIn: Fader{
-						Start: "7:00PM",
-						End:   "10:00PM",
-					},
-					FadeOut: Fader{
-						Start: "8:00AM",
-						End:   "10:00AM",
-					},
-				},
-			},
-			Seasonal: []SeasonalConfig{
-				// Halloween
-				{
-					Colors: []Color{
-						// Orange
-						"oklch(55.3% 0.195 38.402)",
-						"oklch(64.6% 0.222 41.116)",
-						"oklch(70.5% 0.213 47.604)",
-						// Amber
-						"oklch(55.5% 0.163 48.998)",
-						"oklch(66.6% 0.179 58.318)",
-						"oklch(76.9% 0.188 70.08)",
-
-						// Fuchsia
-						"oklch(51.8% 0.253 323.949)",
-						"oklch(66.7% 0.295 322.15)",
-						// Purple
-						"oklch(49.6% 0.265 301.924)",
-						"oklch(62.7% 0.265 303.9)",
-						// Violet
-						"oklch(49.1% 0.27 292.581)",
-						"oklch(60.6% 0.25 292.717)",
-					},
-					FadeIn: DateFader{
-						Start: "10-01",
-						End:   "10-20",
-					},
-					FadeOut: DateFader{
-						Start: "11-01",
-						End:   "11-07",
-					},
-				},
-			},
-			Transition: Transition{
-				Minimum: "5s",
-				Maximum: "30s",
-			},
-			Hold: Transition{
-				Minimum: "0s",
-				Maximum: "15s",
-			},
-		},
-	},
+	Groups:   []GroupConfig{},
 	Timestep: "1s",
 }
 
@@ -177,33 +100,19 @@ func (co Color) Evaluate() Oklch {
 }
 
 type Colors struct {
-	unparsed []Color
-
 	colors             []Oklch
 	previouslySelected uint
 }
 
-func (c *Colors) getColors() []Oklch {
-	if c.colors != nil {
-		return c.colors
-	}
-
-	colors := make([]Oklch, len(c.unparsed))
-	for i, color := range c.unparsed {
-		colors[i] = color.Evaluate()
-	}
-
-	c.colors = colors
-	return colors
-}
-
 func (c *Colors) Select() Oklch {
+	util.Assert(len(c.colors) > 0, "must have colors")
+
 	idx := rand.UintN(uint(len(c.colors)) - 1)
 	if idx == c.previouslySelected {
 		idx = uint(len(c.colors)) - 1
 	}
 
-	col := c.getColors()[idx]
+	col := c.colors[idx]
 	c.previouslySelected = idx
 	return col
 }
@@ -225,233 +134,150 @@ func mustLoadLocation() *time.Location {
 	return l
 }
 
-type Transition struct {
-	Minimum string `json:"min"`
-	Maximum string `json:"max"`
-
-	minimum *time.Duration
-	maximum *time.Duration
-}
-
-func (t *Transition) Min() time.Duration {
-	if t.minimum == nil {
-		minimum := util.Must(time.ParseDuration(t.Minimum))
-		t.minimum = &minimum
-	}
-
-	return *t.minimum
-}
-
-func (t *Transition) Max() time.Duration {
-	if t.maximum == nil {
-		maximum := util.Must(time.ParseDuration(t.Maximum))
-		t.maximum = &maximum
-	}
-
-	return *t.maximum
-}
-
-func (t *Transition) Select() time.Duration {
-	seconds := t.Min().Seconds() + rand.Float64()*(t.Max().Seconds()-t.Min().Seconds())
-	return time.Duration(seconds * float64(time.Second))
-}
-
-type Fader struct {
+type TimeFader struct {
 	Start string `json:"start"`
 	End   string `json:"end"`
-
-	start *time.Time
-	end   *time.Time
-}
-
-func (f *Fader) StartTime() time.Time {
-	if f.start == nil {
-		start := util.Must(time.ParseInLocation(time.Kitchen, f.Start, loc))
-		f.start = &start
-	}
-
-	return *f.start
-}
-
-func (f *Fader) EndTime() time.Time {
-	if f.end == nil {
-		end := util.Must(time.ParseInLocation(time.Kitchen, f.End, loc))
-		f.end = &end
-	}
-
-	return *f.end
 }
 
 type TimeConfig struct {
-	FadeIn  Fader   `json:"fade_in"`
-	FadeOut Fader   `json:"fade_out"`
-	Colors  []Color `json:"colors"`
-
-	colors *Colors
+	FadeIn  TimeFader `json:"fade_in"`
+	FadeOut TimeFader `json:"fade_out"`
 }
 
-func (t *TimeConfig) getColors() *Colors {
-	if t.colors == nil {
-		t.colors = &Colors{
-			unparsed: t.Colors,
-		}
-	}
-
-	return t.colors
-}
-
-func (t *TimeConfig) SelectColor() (Oklch, float64) {
-	// fallback if no colors configured
-	if len(t.Colors) == 0 {
-		return Oklch{}, 0
-	}
-	col := t.getColors().Select()
-
-	now := time.Now().In(loc)
-	n := minutesSinceMidnight(now)
-
-	fiS := minutesSinceMidnight(asToday(now, t.FadeIn.StartTime()))
-	fiE := minutesSinceMidnight(asToday(now, t.FadeIn.EndTime()))
-	foS := minutesSinceMidnight(asToday(now, t.FadeOut.StartTime()))
-	foE := minutesSinceMidnight(asToday(now, t.FadeOut.EndTime()))
-
-	// piecewise on the circular day:
-	switch {
-	case inArc(fiS, fiE, n): // fading in
-		return col, fracAlong(fiS, fiE, n)
-	case inArc(fiE, foS, n): // fully on
-		return col, 1.0
-	case inArc(foS, foE, n): // fading out
-		return col, 1.0 - fracAlong(foS, foE, n)
-	default: // fully off
-		return col, 0.0
+func (t TimeConfig) Compile() *TimeOverlay {
+	return &TimeOverlay{
+		fadeInStart:  util.Must(time.ParseInLocation(time.Kitchen, t.FadeIn.Start, loc)),
+		fadeInEnd:    util.Must(time.ParseInLocation(time.Kitchen, t.FadeIn.End, loc)),
+		fadeOutStart: util.Must(time.ParseInLocation(time.Kitchen, t.FadeOut.Start, loc)),
+		fadeOutEnd:   util.Must(time.ParseInLocation(time.Kitchen, t.FadeOut.End, loc)),
 	}
 }
 
 type DateFader struct {
 	Start string `json:"start"`
 	End   string `json:"end"`
-
-	start *time.Time
-	end   *time.Time
-}
-
-var dayLayout = "01-02"
-
-func (d *DateFader) StartDate() time.Time {
-	if d.start == nil {
-		start := util.Must(time.ParseInLocation(dayLayout, d.Start, loc))
-		d.start = &start
-	}
-
-	return *d.start
-}
-
-func (d *DateFader) EndDate() time.Time {
-	if d.end == nil {
-		end := util.Must(time.ParseInLocation(dayLayout, d.End, loc))
-		d.end = &end
-	}
-
-	return *d.end
 }
 
 type SeasonalConfig struct {
 	FadeIn  DateFader `json:"fade_in"`
 	FadeOut DateFader `json:"fade_out"`
-	Colors  []Color   `json:"colors"`
-
-	colors *Colors
 }
 
-func (s *SeasonalConfig) getColors() *Colors {
-	if s.colors == nil {
-		s.colors = &Colors{
-			unparsed: s.Colors,
-		}
-	}
+var dayLayout = "01-02"
 
-	return s.colors
-}
-
-func (s *SeasonalConfig) SelectColor() (Oklch, float64) {
-	if len(s.Colors) == 0 {
-		return Oklch{}, 0
-	}
-	col := s.getColors().Select()
-
-	now := time.Now().In(loc)
-	y := now.Year()
-	total := yearLength(y)
-
-	fiS := ydayFromMMDD(y, s.FadeIn.StartDate())
-	fiE := ydayFromMMDD(y, s.FadeIn.EndDate())
-	foS := ydayFromMMDD(y, s.FadeOut.StartDate())
-	foE := ydayFromMMDD(y, s.FadeOut.EndDate())
-	n := now.YearDay() - 1 // 0-based
-
-	switch {
-	case inArcDays(fiS, fiE, n, total): // fading in
-		return col, fracAlongDays(fiS, fiE, n, total)
-	case inArcDays(fiE, foS, n, total): // fully on
-		return col, 1.0
-	case inArcDays(foS, foE, n, total): // fading out
-		return col, 1.0 - fracAlongDays(foS, foE, n, total)
-	default: // off
-		return col, 0.0
+func (s SeasonalConfig) Compile() *DateOverlay {
+	return &DateOverlay{
+		fadeInStart:  util.Must(time.ParseInLocation(dayLayout, s.FadeIn.Start, loc)),
+		fadeInEnd:    util.Must(time.ParseInLocation(dayLayout, s.FadeIn.End, loc)),
+		fadeOutStart: util.Must(time.ParseInLocation(dayLayout, s.FadeOut.Start, loc)),
+		fadeOutEnd:   util.Must(time.ParseInLocation(dayLayout, s.FadeOut.End, loc)),
 	}
 }
 
 type GroupConfig struct {
-	Priority   uint             `json:"priority"`
-	Ambient    []Color          `json:"ambient"`
-	Time       []TimeConfig     `json:"time"`
-	Seasonal   []SeasonalConfig `json:"seasonal"`
-	Transition Transition       `json:"transition"`
-	Hold       Transition       `json:"hold"`
+	Colors    []Color  `json:"colors"`
+	AppliesTo []string `json:"applies_to"`
 
-	// evaluated
-	ambientColors *Colors
+	Time *TimeConfig     `json:"time"`
+	Date *SeasonalConfig `json:"date"`
 }
 
-func (g *GroupConfig) colors() *Colors {
-	if g.ambientColors == nil {
-		g.ambientColors = &Colors{
-			unparsed: g.Ambient,
+func (g *GroupConfig) Contains(groups []string) bool {
+	if len(g.AppliesTo) == 0 {
+		return true
+	}
+
+	for _, group := range g.AppliesTo {
+		if slices.Contains(groups, group) {
+			return true
 		}
 	}
 
-	return g.ambientColors
+	return false
 }
 
-func (g *GroupConfig) SelectColor() Oklch {
-	color := g.colors().Select()
+func (g *GroupConfig) IsAmbient() bool {
+	return g.Time == nil && g.Date == nil
+}
 
-	for _, seasonConfig := range g.Seasonal {
-		color = color.Lerp(seasonConfig.SelectColor())
+func (g *GroupConfig) CompileColors() []Oklch {
+	colors := make([]Oklch, len(g.Colors))
+	for i, color := range g.Colors {
+		colors[i] = color.Evaluate()
 	}
 
-	for _, timeConfig := range g.Time {
-		color = color.Lerp(timeConfig.SelectColor())
-	}
+	return colors
+}
 
-	return color
+type Transition struct {
+	Minimum string `json:"min"`
+	Maximum string `json:"max"`
 }
 
 type Config struct {
-	Groups   map[string]GroupConfig `json:"groups"`
-	Timestep string                 `json:"timestep"`
+	Timestep   string     `json:"timestep"`
+	Transition Transition `json:"transition"`
+	Hold       Transition `json:"hold"`
 
-	timestep *time.Duration
+	Groups []GroupConfig `json:"groups"`
 }
 
-func (c *Config) TimestepDuration() time.Duration {
-	if c.timestep == nil {
-		timestep := util.Must(time.ParseDuration(c.Timestep))
-		c.timestep = &timestep
+func (c *Config) ContainsGroup(name string) bool {
+	list := []string{name}
+	for _, group := range c.Groups {
+		if group.Contains(list) {
+			return true
+		}
 	}
 
-	return *c.timestep
+	return false
+}
+
+func (c *Config) Compile(groups []string) RuntimeConfig {
+	ambients := []Oklch{}
+	overlays := []Overlay{}
+
+	for _, group := range c.Groups {
+		if !group.Contains(groups) {
+			continue
+		}
+
+		if group.IsAmbient() {
+			ambients = append(ambients, group.CompileColors()...)
+			continue
+		}
+
+		var timeOverlay *TimeOverlay
+		if group.Time != nil {
+			timeOverlay = group.Time.Compile()
+		}
+
+		var dateOverlay *DateOverlay
+		if group.Date != nil {
+			dateOverlay = group.Date.Compile()
+		}
+
+		overlays = append(overlays, Overlay{
+			time: timeOverlay,
+			date: dateOverlay,
+			colors: Colors{
+				colors: group.CompileColors(),
+			},
+		})
+	}
+
+	return RuntimeConfig{
+		timestep: util.Must(time.ParseDuration(c.Timestep)),
+		ambients: Colors{
+			colors: ambients,
+		},
+		overlays: overlays,
+
+		transitionMin: util.Must(time.ParseDuration(c.Transition.Minimum)),
+		transitionMax: util.Must(time.ParseDuration(c.Transition.Maximum)),
+		holdMin:       util.Must(time.ParseDuration(c.Hold.Minimum)),
+		holdMax:       util.Must(time.ParseDuration(c.Hold.Maximum)),
+	}
 }
 
 func ColorPayload(color Oklch, transition float64) []byte {

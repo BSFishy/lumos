@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"fmt"
+	"log/slog"
+	"runtime/debug"
 	"sync"
 	"time"
 
@@ -37,15 +39,21 @@ func (m *Manager) CancelAll() {
 	m.cancels = []context.CancelFunc{}
 }
 
-func (m *Manager) Start(c mqtt.Client, friendlyName string, groupConfig GroupConfig) {
+func (m *Manager) Start(c mqtt.Client, friendlyName string, cfg RuntimeConfig) {
 	ctx, cancel := context.WithCancel(context.Background())
 	m.addCancel(cancel)
 
 	go func() {
+		defer func() {
+			if err := recover(); err != nil {
+				slog.Error("panic for light", "friendlyName", friendlyName, "err", err, "stack", debug.Stack())
+			}
+		}()
+
 		cm := &ColorManager{
 			client:       c,
 			friendlyName: friendlyName,
-			groupConfig:  groupConfig,
+			cfg:          cfg,
 		}
 
 		cm.Run(ctx)
@@ -56,7 +64,7 @@ type ColorManager struct {
 	client mqtt.Client
 
 	friendlyName string
-	groupConfig  GroupConfig
+	cfg          RuntimeConfig
 
 	previousColor, nextColor Oklch
 	start, end               time.Time
@@ -64,18 +72,18 @@ type ColorManager struct {
 
 func (c *ColorManager) Run(ctx context.Context) {
 	topic := fmt.Sprintf("zigbee2mqtt/%s/set", c.friendlyName)
-	c.previousColor = c.groupConfig.SelectColor()
+	c.previousColor = c.cfg.SelectColor()
 
 outer:
 	for {
-		c.nextColor = c.groupConfig.SelectColor()
+		c.nextColor = c.cfg.SelectColor()
 
-		duration := c.groupConfig.Transition.Select()
+		duration := c.cfg.Transition()
 
 		c.start = time.Now()
 		c.end = c.start.Add(duration)
 
-		ticker := time.NewTicker(config.TimestepDuration())
+		ticker := time.NewTicker(c.cfg.timestep)
 		timer := time.NewTimer(duration)
 
 		c.updateColor(topic, duration.Seconds())
@@ -97,7 +105,7 @@ outer:
 				select {
 				case <-ctx.Done():
 					return
-				case <-time.After(c.groupConfig.Hold.Select()):
+				case <-time.After(c.cfg.Hold()):
 					break
 				}
 
@@ -108,7 +116,7 @@ outer:
 }
 
 func (c *ColorManager) updateColor(topic string, durationSeconds float64) {
-	transition := min(max(time.Until(c.end), 0), config.TimestepDuration())
+	transition := min(max(time.Until(c.end), 0), c.cfg.timestep)
 
 	elapsed := time.Since(c.start).Seconds()
 	t := clamp01((elapsed + transition.Seconds()) / durationSeconds)
