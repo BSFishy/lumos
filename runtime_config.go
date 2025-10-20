@@ -107,10 +107,19 @@ func (r *RuntimeConfig) Hold() time.Duration {
 }
 
 func (r *RuntimeConfig) SelectColor() Oklch {
-	color := r.ambients.Select()
 	for _, overlay := range r.overlays {
-		color = color.Lerp(overlay.colors.Select(), overlay.Mix())
+		// a mix of 1 means this overlay should always take over. rand.Float64()
+		// returns a value [0, 1) so that means if the mix is 1, a random value will
+		// always be less than it. similarly, if the mix is 0, this overlay should
+		// never be used. that means a random value will always be above the mix.
+		// anything in between will randomly select this overlay or move to the next
+		// one.
+		threshold := overlay.Mix()
+		r := rand.Float64()
+		if r < threshold {
+			return overlay.colors.Select()
+		}
 	}
 
-	return color
+	return r.ambients.Select()
 }
