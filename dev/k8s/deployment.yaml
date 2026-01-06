@@ -38,7 +38,7 @@ metadata:
 data:
   config.json: |
     {
-      "timestep": "1s",
+      "steps": 5,
       "transition": {
         "min": "1s",
         "max": "2s"

@@ -37,8 +37,8 @@ func SetupConfig() {
 }
 
 var config = Config{
-	Groups:   []GroupConfig{},
-	Timestep: "1s",
+	Groups: []GroupConfig{},
+	Steps:  5,
 }
 
 type Color string
@@ -215,7 +215,7 @@ type Transition struct {
 }
 
 type Config struct {
-	Timestep   string     `json:"timestep"`
+	Steps      uint       `json:"steps"`
 	Transition Transition `json:"transition"`
 	Hold       Transition `json:"hold"`
 
@@ -267,7 +267,7 @@ func (c *Config) Compile(groups []string) RuntimeConfig {
 	}
 
 	return RuntimeConfig{
-		timestep: util.Must(time.ParseDuration(c.Timestep)),
+		steps: c.Steps,
 		ambients: Colors{
 			colors: ambients,
 		},

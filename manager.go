@@ -83,7 +83,7 @@ outer:
 		c.start = time.Now()
 		c.end = c.start.Add(duration)
 
-		ticker := time.NewTicker(c.cfg.timestep)
+		ticker := time.NewTicker(duration / time.Duration(c.cfg.steps))
 		timer := time.NewTimer(duration)
 
 		c.updateColor(topic, duration.Seconds())
@@ -115,8 +115,13 @@ outer:
 	}
 }
 
+func secondsToDuration(seconds float64) time.Duration {
+	nanos := seconds * float64(time.Second)
+	return time.Duration(nanos)
+}
+
 func (c *ColorManager) updateColor(topic string, durationSeconds float64) {
-	transition := min(max(time.Until(c.end), 0), c.cfg.timestep)
+	transition := min(max(time.Until(c.end), 0), secondsToDuration(durationSeconds/float64(c.cfg.steps)))
 
 	elapsed := time.Since(c.start).Seconds()
 	t := clamp01((elapsed + transition.Seconds()) / durationSeconds)

@@ -86,7 +86,7 @@ func (o *Overlay) Mix() float64 {
 }
 
 type RuntimeConfig struct {
-	timestep time.Duration
+	steps    uint
 	ambients Colors
 	overlays []Overlay
 
